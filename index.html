@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Ensures proper scaling on mobile devices -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>C. ISO SNAKE GAME</title>
+  <style>
+    /* Reset default margins/padding */
+    html, body {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    *, *::before, *::after {
+      box-sizing: inherit;
+    }
+    body {
+      background-color: #222;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    /* Home Screen styling */
+    #homeScreen {
+      text-align: center;
+      margin-top: 100px;
+    }
+    #homeScreen h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+    #homeScreen p {
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+    #homeScreen button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Game Screen container */
+    #gameScreen {
+      width: 100%;
+      max-width: 400px;
+      display: none;
+    }
+    /* Top Controls styling */
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    #controls input,
+    #controls button {
+      flex: 1 1 auto;
+      padding: 8px;
+      font-size: 14px;
+      min-width: 80px;
+    }
+    /* Canvas styling */
+    #gameCanvas {
+      background-color: #000;
+      border: 2px solid #fff;
+      display: block;
+      width: 100%;
+      max-width: 400px;
+      height: auto;
+    }
+    /* On‑screen controller styled as a D‑pad */
+    #controller {
+      margin: 15px 0;
+      display: inline-block;
+    }
+    .controller-row {
+      display: flex;
+      justify-content: center;
+    }
+    .controller-row button {
+      margin: 2px;
+      width: 60px;
+      height: 60px;
+      font-size: 24px;
+      cursor: pointer;
+    }
+    /* Score Board styling */
+    #scoreBoard {
+      margin-top: 20px;
+      text-align: center;
+    }
+    #scoreBoard h2 {
+      margin-bottom: 10px;
+    }
+    #scoreList {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #444;
+    }
+    #scoreList li {
+      padding: 5px;
+      border-bottom: 1px solid #444;
+    }
+    #historyControls {
+      margin-top: 10px;
+    }
+    #historyControls button {
+      padding: 8px 12px;
+      margin: 5px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Home Screen -->
+  <div id="homeScreen">
+    <h1>C. ISO SNAKE GAME</h1>
+    <p></p>
+    <button id="enterGameBtn">Enter Game</button>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="gameScreen">
+    <!-- Top Controls -->
+    <div id="controls">
+      <input type="text" id="playerNameInput" placeholder="Enter your name" />
+      <button id="startGameBtn">Start Game</button>
+      <button id="pauseGameBtn" disabled>Pause</button>
+      <button id="continueGameBtn" disabled>Continue</button>
+      <button id="restartGameBtn" disabled>Restart</button>
+    </div>
+
+    <!-- The Game Canvas -->
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+
+    <!-- On‑screen directional controller (D‑pad layout) -->
+    <div id="controller">
+      <div class="controller-row">
+        <button id="btnUp">↑</button>
+      </div>
+      <div class="controller-row">
+        <button id="btnLeft">←</button>
+        <button id="btnDown">↓</button>
+        <button id="btnRight">→</button>
+      </div>
+    </div>
+
+    <!-- Score Board with history management -->
+    <div id="scoreBoard">
+      <h2>Score History</h2>
+      <ul id="scoreList"></ul>
+      <div id="historyControls">
+        <button id="deleteHistoryBtn">Delete History</button>
+        <button id="restoreHistoryBtn">Restore History</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Toggle from home screen to game screen
+    const homeScreen = document.getElementById("homeScreen");
+    const gameScreen = document.getElementById("gameScreen");
+    const enterGameBtn = document.getElementById("enterGameBtn");
+    enterGameBtn.addEventListener("click", () => {
+      homeScreen.style.display = "none";
+      gameScreen.style.display = "block";
+    });
+
+    // Canvas and context
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Game configuration
+    const gridSize = 20;
+    const gameWidth = canvas.width;
+    const gameHeight = canvas.height;
+    // Set slower speed: 200 ms per frame
+    const gameSpeed = 200;
+
+    // Game state variables
+    let score = 0;
+    let snake = [];
+    let direction = { x: gridSize, y: 0 };
+    let food = null;
+    let gameInterval = null;
+    let countdownInterval = null;
+    let isPaused = false;
+    let gameStarted = false;
+    let playerName = "";
+    let scoreHistory = [];
+    let backupScoreHistory = []; // For restoring deleted history
+
+    // UI elements for game controls
+    const playerNameInput = document.getElementById("playerNameInput");
+    const startGameBtn = document.getElementById("startGameBtn");
+    const pauseGameBtn = document.getElementById("pauseGameBtn");
+    const continueGameBtn = document.getElementById("continueGameBtn");
+    const restartGameBtn = document.getElementById("restartGameBtn");
+    const scoreList = document.getElementById("scoreList");
+    const deleteHistoryBtn = document.getElementById("deleteHistoryBtn");
+    const restoreHistoryBtn = document.getElementById("restoreHistoryBtn");
+
+    // On‑screen controller buttons
+    const btnUp = document.getElementById("btnUp");
+    const btnDown = document.getElementById("btnDown");
+    const btnLeft = document.getElementById("btnLeft");
+    const btnRight = document.getElementById("btnRight");
+
+    // Reset game state
+    function resetGame() {
+      score = 0;
+      snake = [
+        { x: 200, y: 200 },
+        { x: 180, y: 200 },
+        { x: 160, y: 200 }
+      ];
+      direction = { x: gridSize, y: 0 };
+      food = getRandomFood();
+    }
+
+    // Generate random food position
+    function getRandomFood() {
+      const foodX = Math.floor(Math.random() * (gameWidth / gridSize)) * gridSize;
+      const foodY = Math.floor(Math.random() * (gameHeight / gridSize)) * gridSize;
+      return { x: foodX, y: foodY };
+    }
+
+    // Main game loop
+    function gameLoop() {
+      const head = { x: snake[0].x + direction.x, y: snake[0].y + direction.y };
+
+      // Check collisions with walls or self
+      if (head.x < 0 || head.x >= gameWidth || head.y < 0 || head.y >= gameHeight) {
+        return gameOver();
+      }
+      for (const segment of snake) {
+        if (head.x === segment.x && head.y === segment.y) {
+          return gameOver();
+        }
+      }
+
+      snake.unshift(head);
+      if (head.x === food.x && head.y === food.y) {
+        score++;
+        food = getRandomFood();
+      } else {
+        snake.pop();
+      }
+      draw();
+    }
+
+    // Render game elements
+    function draw() {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, gameWidth, gameHeight);
+
+      ctx.fillStyle = "red";
+      ctx.fillRect(food.x, food.y, gridSize, gridSize);
+
+      ctx.fillStyle = "lime";
+      snake.forEach(segment => {
+        ctx.fillRect(segment.x, segment.y, gridSize - 1, gridSize - 1);
+      });
+
+      drawFinger(snake[0]);
+
+      ctx.fillStyle = "white";
+      ctx.font = "20px Arial";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText("Score: " + score, 10, 10);
+    }
+
+    // Draw arrow indicator on snake’s head
+    function drawFinger(head) {
+      const centerX = head.x + gridSize / 2;
+      const centerY = head.y + gridSize / 2;
+      const angle = Math.atan2(direction.y, direction.x);
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(gridSize / 2, 0);
+      ctx.lineTo(-gridSize / 4, gridSize / 4);
+      ctx.lineTo(-gridSize / 4, -gridSize / 4);
+      ctx.closePath();
+      ctx.fillStyle = "yellow";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Draw countdown timer
+    function drawCountdown(count) {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, gameWidth, gameHeight);
+      ctx.fillStyle = "white";
+      ctx.font = "60px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      if (count > 0) {
+        ctx.fillText(count, gameWidth / 2, gameHeight / 2);
+      } else {
+        ctx.fillText("Go!", gameWidth / 2, gameHeight / 2);
+      }
+    }
+
+    // Start a 5‑second countdown, then start game loop
+    function startCountdown() {
+      let countdown = 5;
+      drawCountdown(countdown);
+      countdownInterval = setInterval(() => {
+        countdown--;
+        drawCountdown(countdown);
+        if (countdown < 0) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+          gameInterval = setInterval(gameLoop, gameSpeed);
+          updateButtons();
+        }
+      }, 1000);
+    }
+
+    // Handle game over: stop loop, update history, and display message
+    function gameOver() {
+      clearInterval(gameInterval);
+      gameStarted = false;
+      updateScoreHistory(playerName, score);
+      drawGameOver();
+      updateButtons();
+    }
+
+    // Render "Game Over" message
+    function drawGameOver() {
+      ctx.fillStyle = "white";
+      ctx.font = "40px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Game Over", gameWidth / 2, gameHeight / 2);
+    }
+
+    // Update score history and the UI list
+    function updateScoreHistory(name, score) {
+      scoreHistory.push({ name, score });
+      updateScoreBoard();
+    }
+    function updateScoreBoard() {
+      scoreList.innerHTML = "";
+      scoreHistory.forEach(entry => {
+        const li = document.createElement("li");
+        li.textContent = `${entry.name}: ${entry.score}`;
+        scoreList.appendChild(li);
+      });
+    }
+
+    // Game control functions
+    function startGame() {
+      // Use a default name if none entered
+      playerName = playerNameInput.value.trim() || "Player";
+      resetGame();
+      gameStarted = true;
+      isPaused = false;
+      updateButtons();
+      startCountdown();
+    }
+    function pauseGame() {
+      if (gameStarted && !isPaused && !countdownInterval) {
+        clearInterval(gameInterval);
+        isPaused = true;
+        updateButtons();
+      }
+    }
+    function continueGame() {
+      if (gameStarted && isPaused) {
+        gameInterval = setInterval(gameLoop, gameSpeed);
+        isPaused = false;
+        updateButtons();
+      }
+    }
+    function restartGame() {
+      if (gameStarted) {
+        clearInterval(gameInterval);
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
+        resetGame();
+        isPaused = false;
+        startCountdown();
+        updateButtons();
+      }
+    }
+    // Update control buttons based on game state
+    function updateButtons() {
+      const countdownActive = countdownInterval !== null;
+      if (!gameStarted) {
+        startGameBtn.disabled = false;
+        pauseGameBtn.disabled = true;
+        continueGameBtn.disabled = true;
+        restartGameBtn.disabled = true;
+      } else {
+        startGameBtn.disabled = true;
+        if (isPaused || countdownActive) {
+          pauseGameBtn.disabled = true;
+          continueGameBtn.disabled = !isPaused;
+        } else {
+          pauseGameBtn.disabled = false;
+          continueGameBtn.disabled = true;
+        }
+        restartGameBtn.disabled = false;
+      }
+    }
+
+    // Keyboard controls
+    document.addEventListener("keydown", event => {
+      switch (event.key) {
+        case "ArrowUp":
+          if (direction.y === 0) direction = { x: 0, y: -gridSize };
+          break;
+        case "ArrowDown":
+          if (direction.y === 0) direction = { x: 0, y: gridSize };
+          break;
+        case "ArrowLeft":
+          if (direction.x === 0) direction = { x: -gridSize, y: 0 };
+          break;
+        case "ArrowRight":
+          if (direction.x === 0) direction = { x: gridSize, y: 0 };
+          break;
+      }
+    });
+
+    // Touch controls for mobile
+    canvas.addEventListener("touchstart", handleTouch, false);
+    canvas.addEventListener("touchmove", handleTouch, false);
+    function handleTouch(event) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const touchX = touch.clientX - rect.left;
+      const touchY = touch.clientY - rect.top;
+      const head = snake[0];
+      const headCenterX = head.x + gridSize / 2;
+      const headCenterY = head.y + gridSize / 2;
+      const deltaX = touchX - headCenterX;
+      const deltaY = touchY - headCenterY;
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        if (deltaX > 0 && direction.x === 0) {
+          direction = { x: gridSize, y: 0 };
+        } else if (deltaX < 0 && direction.x === 0) {
+          direction = { x: -gridSize, y: 0 };
+        }
+      } else {
+        if (deltaY > 0 && direction.y === 0) {
+          direction = { x: 0, y: gridSize };
+        } else if (deltaY < 0 && direction.y === 0) {
+          direction = { x: 0, y: -gridSize };
+        }
+      }
+    }
+
+    // On‑screen controller event listeners
+    btnUp.addEventListener("click", () => {
+      if (direction.y === 0) direction = { x: 0, y: -gridSize };
+    });
+    btnDown.addEventListener("click", () => {
+      if (direction.y === 0) direction = { x: 0, y: gridSize };
+    });
+    btnLeft.addEventListener("click", () => {
+      if (direction.x === 0) direction = { x: -gridSize, y: 0 };
+    });
+    btnRight.addEventListener("click", () => {
+      if (direction.x === 0) direction = { x: gridSize, y: 0 };
+    });
+
+    // History control event listeners
+    deleteHistoryBtn.addEventListener("click", () => {
+      backupScoreHistory = scoreHistory.slice();
+      scoreHistory = [];
+      updateScoreBoard();
+    });
+    restoreHistoryBtn.addEventListener("click", () => {
+      if (backupScoreHistory.length > 0) {
+        scoreHistory = backupScoreHistory.slice();
+        updateScoreBoard();
+        backupScoreHistory = [];
+      } else {
+        alert("No history to restore.");
+      }
+    });
+
+    // Attach game control event listeners
+    startGameBtn.addEventListener("click", startGame);
+    pauseGameBtn.addEventListener("click", pauseGame);
+    continueGameBtn.addEventListener("click", continueGame);
+    restartGameBtn.addEventListener("click", restartGame);
+
+    // Initialize button states
+    updateButtons();
+  </script>
+</body>
+</html>
